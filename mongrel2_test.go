@@ -12,5 +12,5 @@ func testHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func TestConn(t *testing.T) {
-	Serve("4321", "tcp://127.0.0.1:9999", "tcp://127.0.0.1:9998", http.HandlerFunc(testHandler))
+	Serve("82209006-86FF-4982-B5EA-D1E29E55D481", "tcp://127.0.0.1:9999", "tcp://127.0.0.1:9998", http.HandlerFunc(testHandler))
 }

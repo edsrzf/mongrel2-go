@@ -17,12 +17,16 @@ func Serve(identity, pullAddr, pubAddr string, handler http.Handler) os.Error {
 	if err != nil {
 		return err
 	}
-	pull.Connect(pullAddr)
+	if err = pull.Connect(pullAddr); err != nil {
+		return err
+	}
 	pub, err := zmq.NewSocket(zmq.SOCK_PUB, identity)
 	if err != nil {
 		return err
 	}
-	pub.Connect(pubAddr)
+	if err = pub.Connect(pubAddr); err != nil {
+		return err
+	}
 
 	for {
 		msg, err := pull.RecvMsg()
@@ -41,20 +45,12 @@ func Serve(identity, pullAddr, pubAddr string, handler http.Handler) os.Error {
 		uuid, id, path := split[0], split[1], split[2]
 		headerJson, n := parseNetstring(split[3])
 		fmt.Printf("whole request: %q\n", split[3])
-		if split[3][n] != ',' {
-			// error
-		}
-		n++
 		var header map[string]string
 		if err = json.Unmarshal(headerJson, &header); err != nil {
 			panic(err.String())
 		}
 
-		body, nn := parseNetstring(split[3][n:])
-		n += nn
-		if split[3][n] != ',' {
-			// error
-		}
+		body, _ := parseNetstring(split[3][n:])
 
 		fmt.Printf("uuid: %q\nid: %q\npath: %q\nheader: %v\nbody: %q\n", uuid, id, path, header, body)
 		req, err := makeRequest(header)
@@ -62,7 +58,10 @@ func Serve(identity, pullAddr, pubAddr string, handler http.Handler) os.Error {
 		resp := response{buf: bytes.NewBuffer(nil), header: http.Header{}}
 		handler.ServeHTTP(resp, req)
 		fmt.Printf("response:\n%q\n", resp.buf.Bytes())
-		fmt.Fprintf(pub, "%s %s, %s", uuid, netstring(id), resp.buf.Bytes())
+		_, err = fmt.Fprintf(pub, "%s %s, %s", uuid, netstring(id), resp.buf.Bytes())
+		if err != nil {
+			panic(err.String())
+		}
 	}
 	panic("unreachable")
 }
@@ -148,6 +147,7 @@ type response struct {
 func (r response) Header() http.Header { return r.header }
 
 func (r response) Write(b []byte) (int, os.Error) {
+	r.header.Set("Content-Length", strconv.Itoa(len(b)))
 	r.WriteHeader(http.StatusOK)
 	return r.buf.Write(b)
 }
@@ -184,7 +184,10 @@ func parseNetstring(nstr []byte) ([]byte, int) {
 		panic("netstring length too long")
 	}
 	count := i + 1 + n
-	return nstr[i+1 : count], count
+	if nstr[count] != ',' {
+		panic("netstring doesn't end with a comma")
+	}
+	return nstr[i+1 : count], count+1
 }
 
 func netstring(str []byte) []byte {
