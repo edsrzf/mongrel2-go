@@ -8,6 +8,7 @@ import (
 	"json"
 	"os"
 	"strconv"
+	"time"
 	"github.com/edsrzf/zegomq"
 )
 
@@ -16,19 +17,23 @@ func Serve(identity, pullAddr, pubAddr string, handler http.Handler) os.Error {
 	if err != nil {
 		return err
 	}
-	pull.Bind("tcp", pullAddr)
+	pull.Connect(pullAddr)
 	pub, err := zmq.NewSocket(zmq.SOCK_PUB, identity)
 	if err != nil {
 		return err
 	}
-	pub.Bind("tcp", pubAddr)
+	pub.Connect(pubAddr)
 
-	b := []byte(nil)
 	for {
-		b, err = pull.ReadFrame(b)
+		msg, err := pull.RecvMsg()
 		if err != nil {
 			panic(err.String())
 		}
+		b, err := ioutil.ReadAll(msg)
+		if err != nil {
+			panic(err.String())
+		}
+		msg.Close()
 		split := bytes.Split(b, []byte{' '}, 4)
 		if len(split) < 4 {
 			panic("bad parse")
@@ -41,8 +46,7 @@ func Serve(identity, pullAddr, pubAddr string, handler http.Handler) os.Error {
 		}
 		n++
 		var header map[string]string
-		err := json.Unmarshal(headerJson, &header)
-		if err != nil {
+		if err = json.Unmarshal(headerJson, &header); err != nil {
 			panic(err.String())
 		}
 
@@ -153,6 +157,14 @@ func (r response) WriteHeader(status int) {
 		return
 	}
 	r.wroteHeader = true
+
+	if r.header.Get("Content-Type") == "" {
+		r.header.Set("Content-Type", "text/html; charset=utf-8")
+	}
+
+	if r.header.Get("Date") == "" {
+		r.header.Set("Date", time.UTC().Format(http.TimeFormat))
+	}
 
 	fmt.Fprintf(r.buf, "HTTP/1.1 %d %s\r\n", status, http.StatusText(status))
 	r.header.Write(r.buf)
