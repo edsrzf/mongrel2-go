@@ -13,14 +13,18 @@ import (
 )
 
 func Serve(identity, pullAddr, pubAddr string, handler http.Handler) os.Error {
-	pull, err := zmq.NewSocket(zmq.SOCK_PULL, "")
+	c, err := zmq.NewContext()
+	if err != nil {
+		return err
+	}
+	pull, err := c.NewSocket(zmq.SOCK_PULL, "")
 	if err != nil {
 		return err
 	}
 	if err = pull.Connect(pullAddr); err != nil {
 		return err
 	}
-	pub, err := zmq.NewSocket(zmq.SOCK_PUB, identity)
+	pub, err := c.NewSocket(zmq.SOCK_PUB, identity)
 	if err != nil {
 		return err
 	}
