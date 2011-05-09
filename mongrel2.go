@@ -48,7 +48,6 @@ func Serve(identity, pullAddr, pubAddr string, handler http.Handler) os.Error {
 		}
 		uuid, id, path := split[0], split[1], split[2]
 		headerJson, n := parseNetstring(split[3])
-		fmt.Printf("whole request: %q\n", split[3])
 		var header map[string]string
 		if err = json.Unmarshal(headerJson, &header); err != nil {
 			panic(err.String())
@@ -56,12 +55,10 @@ func Serve(identity, pullAddr, pubAddr string, handler http.Handler) os.Error {
 
 		body, _ := parseNetstring(split[3][n:])
 
-		fmt.Printf("uuid: %q\nid: %q\npath: %q\nheader: %v\nbody: %q\n", uuid, id, path, header, body)
 		req, err := makeRequest(header)
 		req.Body = ioutil.NopCloser(bytes.NewBuffer(body))
 		resp := response{buf: bytes.NewBuffer(nil), header: http.Header{}}
 		handler.ServeHTTP(resp, req)
-		fmt.Printf("response:\n%q\n", resp.buf.Bytes())
 		_, err = fmt.Fprintf(pub, "%s %s, %s", uuid, netstring(id), resp.buf.Bytes())
 		if err != nil {
 			panic(err.String())
