@@ -13,10 +13,7 @@ import (
 )
 
 func Serve(identity, pullAddr, pubAddr string, handler http.Handler) os.Error {
-	c, err := zmq.NewContext()
-	if err != nil {
-		return err
-	}
+	c := zmq.NewContext()
 	pull, err := c.NewSocket(zmq.SOCK_PULL, "")
 	if err != nil {
 		return err
@@ -46,7 +43,7 @@ func Serve(identity, pullAddr, pubAddr string, handler http.Handler) os.Error {
 		if len(split) < 4 {
 			panic("bad parse")
 		}
-		uuid, id, path := split[0], split[1], split[2]
+		uuid, id := split[0], split[1]
 		headerJson, n := parseNetstring(split[3])
 		var header map[string]string
 		if err = json.Unmarshal(headerJson, &header); err != nil {
@@ -97,8 +94,8 @@ func makeRequest(params map[string]string) (*http.Request, os.Error) {
 	r.Header = http.Header{}
 
 	r.Host = params["Host"]
-	r.Referer = params["Referer"]
-	r.UserAgent = params["User-Agent"]
+	r.Header.Set("Referer", params["Referer"])
+	r.Header.Set("User-Agent", params["User-Agent"])
 
 	if lenstr := params["Content-Length"]; lenstr != "" {
 		clen, err := strconv.Atoi64(lenstr)
