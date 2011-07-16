@@ -39,7 +39,7 @@ func Serve(identity, pullAddr, pubAddr string, handler http.Handler) os.Error {
 			panic(err.String())
 		}
 		msg.Close()
-		split := bytes.Split(b, []byte{' '}, 4)
+		split := bytes.SplitN(b, []byte{' '}, 4)
 		if len(split) < 4 {
 			panic("bad parse")
 		}
