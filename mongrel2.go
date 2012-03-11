@@ -2,17 +2,18 @@ package mongrel2
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
-	"http"
+	"github.com/edsrzf/zegomq"
 	"io/ioutil"
-	"json"
-	"os"
+	"net/http"
+	"net/url"
 	"strconv"
 	"time"
-	"github.com/edsrzf/zegomq"
 )
 
-func Serve(identity, pullAddr, pubAddr string, handler http.Handler) os.Error {
+func Serve(identity, pullAddr, pubAddr string, handler http.Handler) error {
 	c := zmq.NewContext()
 	pull, err := c.NewSocket(zmq.SOCK_PULL, "")
 	if err != nil {
@@ -32,11 +33,11 @@ func Serve(identity, pullAddr, pubAddr string, handler http.Handler) os.Error {
 	for {
 		msg, err := pull.RecvMsg()
 		if err != nil {
-			panic(err.String())
+			panic(err.Error())
 		}
 		b, err := ioutil.ReadAll(msg)
 		if err != nil {
-			panic(err.String())
+			panic(err.Error())
 		}
 		msg.Close()
 		split := bytes.SplitN(b, []byte{' '}, 4)
@@ -47,7 +48,7 @@ func Serve(identity, pullAddr, pubAddr string, handler http.Handler) os.Error {
 		headerJson, n := parseNetstring(split[3])
 		var header map[string]string
 		if err = json.Unmarshal(headerJson, &header); err != nil {
-			panic(err.String())
+			panic(err.Error())
 		}
 
 		body, _ := parseNetstring(split[3][n:])
@@ -58,7 +59,7 @@ func Serve(identity, pullAddr, pubAddr string, handler http.Handler) os.Error {
 		handler.ServeHTTP(resp, req)
 		_, err = fmt.Fprintf(pub, "%s %s, %s", uuid, netstring(id), resp.buf.Bytes())
 		if err != nil {
-			panic(err.String())
+			panic(err.Error())
 		}
 	}
 	panic("unreachable")
@@ -76,18 +77,18 @@ var skipHeader = map[string]bool{
 	"Content-Length": true,
 }
 
-func makeRequest(params map[string]string) (*http.Request, os.Error) {
+func makeRequest(params map[string]string) (*http.Request, error) {
 	r := new(http.Request)
 	r.Method = params["METHOD"]
 	if r.Method == "" {
-		return nil, os.NewError("mongrel2: no METHOD")
+		return nil, errors.New("mongrel2: no METHOD")
 	}
 
 	r.Proto = params["VERSION"]
 	var ok bool
 	r.ProtoMajor, r.ProtoMinor, ok = http.ParseHTTPVersion(r.Proto)
 	if !ok {
-		return nil, os.NewError("mongrel2: invalid protocol version")
+		return nil, errors.New("mongrel2: invalid protocol version")
 	}
 
 	r.Trailer = http.Header{}
@@ -98,9 +99,9 @@ func makeRequest(params map[string]string) (*http.Request, os.Error) {
 	r.Header.Set("User-Agent", params["User-Agent"])
 
 	if lenstr := params["Content-Length"]; lenstr != "" {
-		clen, err := strconv.Atoi64(lenstr)
+		clen, err := strconv.ParseInt(lenstr, 10, 64)
 		if err != nil {
-			return nil, os.NewError("mongrel2: bad Content-Length")
+			return nil, errors.New("mongrel2: bad Content-Length")
 		}
 		r.ContentLength = clen
 	}
@@ -114,20 +115,18 @@ func makeRequest(params map[string]string) (*http.Request, os.Error) {
 	// TODO: cookies
 
 	if r.Host != "" {
-		r.RawURL = "http://" + r.Host + params["URI"]
-		url, err := http.ParseURL(r.RawURL)
+		url_, err := url.Parse("http://" + r.Host + params["URI"])
 		if err != nil {
-			return nil, os.NewError("mongrel2: failed to parse host and URI into a URL")
+			return nil, errors.New("mongrel2: failed to parse host and URI into a URL")
 		}
-		r.URL = url
+		r.URL = url_
 	}
 	if r.URL == nil {
-		r.RawURL = params["URI"]
-		url, err := http.ParseURL(r.RawURL)
+		url_, err := url.Parse(params["URI"])
 		if err != nil {
-			return nil, os.NewError("mongrel2: failed to parse URI into a URL")
+			return nil, errors.New("mongrel2: failed to parse URI into a URL")
 		}
-		r.URL = url
+		r.URL = url_
 	}
 
 	// TODO: how do we know if we're using HTTPS?
@@ -144,7 +143,7 @@ type response struct {
 
 func (r response) Header() http.Header { return r.header }
 
-func (r response) Write(b []byte) (int, os.Error) {
+func (r response) Write(b []byte) (int, error) {
 	r.header.Set("Content-Length", strconv.Itoa(len(b)))
 	r.WriteHeader(http.StatusOK)
 	return r.buf.Write(b)
@@ -161,7 +160,7 @@ func (r response) WriteHeader(status int) {
 	}
 
 	if r.header.Get("Date") == "" {
-		r.header.Set("Date", time.UTC().Format(http.TimeFormat))
+		r.header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
 	}
 
 	fmt.Fprintf(r.buf, "HTTP/1.1 %d %s\r\n", status, http.StatusText(status))
@@ -185,7 +184,7 @@ func parseNetstring(nstr []byte) ([]byte, int) {
 	if nstr[count] != ',' {
 		panic("netstring doesn't end with a comma")
 	}
-	return nstr[i+1 : count], count+1
+	return nstr[i+1 : count], count + 1
 }
 
 func netstring(str []byte) []byte {

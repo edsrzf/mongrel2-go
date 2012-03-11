@@ -2,7 +2,7 @@ package mongrel2
 
 import (
 	"fmt"
-	"http"
+	"net/http"
 	"testing"
 )
 
