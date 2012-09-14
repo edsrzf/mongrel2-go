@@ -56,7 +56,7 @@ func Serve(identity, pullAddr, pubAddr string, handler http.Handler) error {
 		req, err := makeRequest(header)
 		req.Body = ioutil.NopCloser(bytes.NewBuffer(body))
 		resp := response{buf: bytes.NewBuffer(nil), header: http.Header{}}
-		handler.ServeHTTP(resp, req)
+		handler.ServeHTTP(&resp, req)
 		_, err = fmt.Fprintf(pub, "%s %s, %s", uuid, netstring(id), resp.buf.Bytes())
 		if err != nil {
 			panic(err.Error())
@@ -141,15 +141,23 @@ type response struct {
 	header      http.Header
 }
 
-func (r response) Header() http.Header { return r.header }
-
-func (r response) Write(b []byte) (int, error) {
-	r.header.Set("Content-Length", strconv.Itoa(len(b)))
-	r.WriteHeader(http.StatusOK)
-	return r.buf.Write(b)
+// get header
+func (r response) Header() http.Header {
+	return r.header
 }
 
-func (r response) WriteHeader(status int) {
+// write headers and body
+func (r response) Write(b []byte) (int, error) {
+	r.header.Set("Content-Length", strconv.Itoa(len(b)))
+	r.WriteHeader(http.StatusOK) // does nothing if headers have been set before
+
+	r.header.Write(r.buf)        // write headers
+	r.buf.WriteString("\r\n")    // delimiter between headers and body
+	return r.buf.Write(b)        // write body
+}
+
+// set headers, except content-length. does not write the headers.
+func (r *response) WriteHeader(status int) {
 	if r.wroteHeader {
 		return
 	}
@@ -164,8 +172,6 @@ func (r response) WriteHeader(status int) {
 	}
 
 	fmt.Fprintf(r.buf, "HTTP/1.1 %d %s\r\n", status, http.StatusText(status))
-	r.header.Write(r.buf)
-	r.buf.WriteString("\r\n")
 }
 
 func parseNetstring(nstr []byte) ([]byte, int) {
